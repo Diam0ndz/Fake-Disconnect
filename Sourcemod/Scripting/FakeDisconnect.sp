@@ -7,8 +7,11 @@
 
 #include <sourcemod>
 #include <sdktools>
+#include <cstrike>
 
 #pragma newdecls required
+
+EngineVersion g_Game;
 
 //ConVar fakeDisconnectMessage;
 
@@ -24,7 +27,11 @@ public Plugin myinfo =
 public void OnPluginStart()
 {
 	//dcMessage = CreateConVar("sm_fakedcmessage", "Player %s has left the game(%s).", "The disconnect message displayed when someone fake disconnects");
-	
+	g_Game = GetEngineVersion();
+	if(g_Game != Engine_CSGO && g_Game != Engine_CSS)
+	{
+		SetFailState("This plugin is for CSGO/CSS only.");	
+	}
 	RegConsoleCmd("sm_fakedisconnect", Command_FakeDisconnect, "Fake your disconnect", ADMFLAG_BAN);
 }
 
@@ -34,17 +41,59 @@ public Action Command_FakeDisconnect(int client, int args)
 	
 	if(args < 1)
 	{
-		PrintToChatAll("Player %N has left the game(Disconnect).", client);
+		char clanTag[32];
+		CS_GetClientClanTag(client, clanTag, sizeof(clanTag));
+		
+		PrintToChatAll("Player %s %N has left the game (Disconnect).", clanTag, client);
 		return Plugin_Handled;
 	}
 	
 	if(args == 1)
 	{
-		char player[MAX_NAME_LENGTH];
-		GetCmdArg(1, player, sizeof(player));
-		PrintToChatAll("Player %s has left the game(Disconnect).", player);
-		return Plugin_Handled;
+		char Arguments[256];
+		GetCmdArgString(Arguments, sizeof(Arguments));
+		
+		char arg[65];
+		int len = BreakString(Arguments, arg, sizeof(arg));
+		
+		if (len == -1)
+		{
+			/* Safely null terminate */
+			len = 0;
+			Arguments[0] = '\0';
+		}
+		
+		char target_name[MAX_TARGET_LENGTH];
+		int target_list[MAXPLAYERS], target_count;
+		bool tn_is_ml;
+		
+		if ((target_count = ProcessTargetString(
+				arg,
+				client, 
+				target_list, 
+				MAXPLAYERS, 
+				COMMAND_FILTER_CONNECTED,
+				target_name,
+				sizeof(target_name),
+				tn_is_ml)) > 0)
+		{
+			char clanTag[32];
+			for (int i = 0; i < target_count; i++)
+			{
+				char name[] = "";
+				GetClientName(target_list[i], name, sizeof(name));
+				
+				if(strcmp(name, target_name, false) != 0)
+				{
+					CS_GetClientClanTag(target_list[i], clanTag, sizeof(clanTag));
+				}
+			}
+			
+			PrintToChatAll("Player %s %s has left the game (Disconnect).", clanTag, target_name);
+			return Plugin_Handled;
+		}
 	}
+	
 	if(args > 1)
 	{
 		char Arguments[256];
@@ -77,14 +126,20 @@ public Action Command_FakeDisconnect(int client, int args)
 			char reason[64];
 			Format(reason, sizeof(reason), Arguments[len]);
 			
+			char clanTag[32];
 			for (int i = 0; i < target_count; i++)
 			{
-				PrintToChatAll("Player %s has left the game(%s).", i, reason);
+				char name[] = "";
+				GetClientName(target_list[i], name, sizeof(name));
+				
+				if(strcmp(name, target_name, false) != 0)
+				{
+					CS_GetClientClanTag(target_list[i], clanTag, sizeof(clanTag));
+				}
 			}
-			return Plugin_Handled;
 			
-			//PrintToChatAll("Player %s has left the game(%s).", target_name, reason);
-			//return Plugin_Handled;
+			PrintToChatAll("Player %s %s has left the game (%s).", clanTag, target_name, reason);
+			return Plugin_Handled;
 		}
 	}
 	return Plugin_Handled;
